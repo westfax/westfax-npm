@@ -1,0 +1,42 @@
+{
+  "name": "westfax",
+  "version": "1.0.0",
+  "description": "Interact with the WestFax Secure Cloud Fax API to send and receive faxes.",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest",
+    "test:mock": "jest",
+    "test:real": "USE_REAL_API=true jest",
+    "lint": "eslint .",
+    "docs": "jsdoc -c jsdoc.json"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/westfax/westfax-npm.git"
+  },
+  "keywords": [
+    "Fax",
+    "HIPAA",
+    "Fax",
+    "API"
+  ],
+  "author": "WestFax",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/westfax/westfax-npm/issues"
+  },
+  "homepage": "https://github.com/westfax/westfax-npm#readme",
+  "dependencies": {
+    "axios": "^1.6.7",
+    "form-data": "^4.0.0"
+  },
+  "devDependencies": {
+    "dotenv": "^16.3.1",
+    "eslint": "^8.57.0",
+    "jest": "^29.7.0",
+    "jsdoc": "^4.0.2"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

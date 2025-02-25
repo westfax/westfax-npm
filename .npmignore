@@ -1,0 +1,25 @@
+# Development files
+.git
+.github
+.eslintrc.js
+.gitignore
+jsdoc.json
+*.log
+
+# Tests
+tests/
+coverage/
+jest.config.js
+
+# Examples
+examples/
+
+# Documentation
+docs/
+
+# Misc
+.DS_Store
+.env
+.env.example
+.vscode/
+node_modules/ 
