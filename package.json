@@ -1,14 +1,15 @@
 {
   "name": "westfax",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Interact with the WestFax Secure Cloud Fax API to send and receive faxes.",
   "main": "index.js",
+  "types": "index.d.ts",
   "scripts": {
     "test": "jest",
-    "test:mock": "jest",
     "test:real": "USE_REAL_API=true jest",
     "lint": "eslint .",
-    "docs": "jsdoc -c jsdoc.json"
+    "docs": "jsdoc -c jsdoc.json",
+    "prepublishOnly": "npm run lint && npm test"
   },
   "repository": {
     "type": "git",

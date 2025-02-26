@@ -340,7 +340,7 @@ Retrieves fax documents.
 
 - `faxIds` (Object|Array): Fax identifier(s)
 - `format` (String, optional): Document format (default: 'pdf')
-  - Valid formats: 'pdf', 'tiff', 'jpeg', 'png', 'gif'
+  - Valid formats: 'pdf', 'tiff'
 
 Returns: Promise resolving to API response object
 
@@ -378,3 +378,27 @@ Returns: Promise resolving to API response object
 ## License
 
 MIT 
+
+declare module 'westfax' {
+  export interface WestFaxConfig {
+    baseUrl?: string;
+    responseEncoding?: string;
+    username?: string;
+    password?: string;
+    productId?: string;
+    cookies?: boolean;
+  }
+
+  export interface SendFaxOptions {
+    numbers: string | string[];
+    // Add other options...
+  }
+
+  class WestFax {
+    constructor(config?: WestFaxConfig);
+    sendFax(options: SendFaxOptions): Promise<any>;
+    // Add other methods...
+  }
+
+  export default WestFax;
+} 
