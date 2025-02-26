@@ -1,6 +1,10 @@
 {
   "name": "westfax",
+<<<<<<< HEAD
   "version": "1.0.2",
+=======
+  "version": "1.0.0",
+>>>>>>> parent of fc3f7b2 (Changed PDF)
   "description": "Interact with the WestFax Secure Cloud Fax API to send and receive faxes.",
   "main": "index.js",
   "types": "index.d.ts",
