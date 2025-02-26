@@ -12,6 +12,10 @@ declare module 'westfax' {
     jobName?: string;
     header?: string;
     billingCode?: string;
+    /**
+     * Destination fax number(s). Can be a single string or an array of strings for multiple recipients.
+     * Maximum of 20 fax numbers allowed when passing an array.
+     */
     numbers: string | string[];
     file: string | Buffer | NodeJS.ReadableStream;
     filename?: string;

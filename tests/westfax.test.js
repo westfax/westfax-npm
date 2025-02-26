@@ -101,6 +101,20 @@ describe('WestFax Client', () => {
         });
       }
     });
+
+    // Add test for maximum fax number limit
+    test('should throw error if more than 20 fax numbers are provided', async () => {
+      // Create array with 21 numbers
+      const tooManyNumbers = Array(21).fill('800-555-0000').map((num, i) => num.replace(/0000$/, `${1000 + i}`));
+      
+      const options = {
+        jobName: 'Too Many Numbers Test',
+        numbers: tooManyNumbers,
+        file: './tests/test.pdf'
+      };
+      
+      await expect(client.sendFax(options)).rejects.toThrow('Maximum of 20 fax numbers allowed');
+    });
   });
   
   describe('getFaxDocuments', () => {

@@ -9,7 +9,7 @@ A Node.js client library for interacting with the WestFax Secure Cloud Fax API. 
 
 ## Features
 
-- Send faxes to single or multiple recipients 
+- Send faxes to single or multiple recipients (up to 20 per fax)
 - Retrieve fax documents
 - Manage fax filter values
 - Get fax descriptions
@@ -130,12 +130,12 @@ To run the examples:
 ### Sending a Fax
 
 ```javascript
-// Send a fax with a file path
+// Send a fax to a single recipient
 const sendFaxResult = await client.sendFax({
   jobName: 'Test Fax',
   header: 'Test Header',
   billingCode: 'Customer Code 1234',
-  numbers: '800-555-1212',
+  numbers: '800-555-1212', // Single string for one recipient
   file: '/path/to/document.pdf',
   csid: '0000000000',
   ani: '0000000000',
@@ -143,13 +143,13 @@ const sendFaxResult = await client.sendFax({
   feedbackEmail: 'your@email.com'
 });
 
-// Send to multiple recipients
+// Send to multiple recipients (up to 20 max)
 // The library will automatically format these as Numbers1, Numbers2, Numbers3, etc.
 // as required by the WestFax API
 const multipleNumbersResult = await client.sendFax({
   jobName: 'Multiple Recipients',
   header: 'Important Document',
-  numbers: ['800-555-1212', '800-555-1213', '800-555-1214'], // Multiple recipients
+  numbers: ['800-555-1212', '800-555-1213', '800-555-1214'], // Array of recipients (max 20)
   file: '/path/to/document.pdf'
 });
 

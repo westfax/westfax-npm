@@ -24,6 +24,7 @@ class WestFax {
    * @param {string} options.billingCode - Optional billing code
    * @param {string|string[]} options.numbers - Destination fax number(s). Can be a single string or an array of strings for multiple recipients.
    *                                           When an array is provided, numbers will be formatted as Numbers1, Numbers2, Numbers3, etc.
+   *                                           Maximum of 20 fax numbers allowed.
    * @param {string|Buffer|Stream} options.file - The file to fax (path or buffer)
    * @param {string} options.csid - Optional CSID (Caller Service ID)
    * @param {string} options.ani - Optional ANI (Automatic Number Identification)
@@ -32,6 +33,7 @@ class WestFax {
    * @param {string} options.feedbackEmail - Optional email for status notifications
    * @param {string} options.callbackUrl - Optional callback URL for status updates
    * @returns {Promise<Object>} - Response from the API
+   * @throws {Error} - Throws an error if more than 20 fax numbers are provided
    */
   async sendFax(options = {}) {
     const formData = new FormData();
@@ -50,6 +52,11 @@ class WestFax {
     // Add fax numbers (required)
     if (options.numbers) {
       if (Array.isArray(options.numbers)) {
+        // Check if the number of fax numbers exceeds the limit
+        if (options.numbers.length > 20) {
+          throw new Error('Maximum of 20 fax numbers allowed');
+        }
+        
         options.numbers.forEach((number, index) => {
           formData.append(`Numbers${index + 1}`, number);
         });
