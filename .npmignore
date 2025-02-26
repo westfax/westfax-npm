@@ -6,6 +6,8 @@
 .npmrc
 jsdoc.json
 *.log
+create_package.js
+*.bak
 
 # Tests
 tests/
