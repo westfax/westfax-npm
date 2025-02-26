@@ -14,3 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Methods for retrieving fax documents and managing fax filter values
 - Comprehensive documentation and examples
 - TypeScript type definitions 
+
+## [1.0.3] - 2024-02-26
+
+### Added
+- Merged single and multi functions
