@@ -340,7 +340,7 @@ Retrieves fax documents.
 
 - `faxIds` (Object|Array): Fax identifier(s)
 - `format` (String, optional): Document format (default: 'pdf')
-  - Valid formats: 'pdf', 'tiff', 'jpeg', 'png', 'gif'
+  - Valid formats: 'pdf', 'tiff'
 
 Returns: Promise resolving to API response object
 
