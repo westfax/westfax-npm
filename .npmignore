@@ -2,6 +2,7 @@
 .git
 .github
 .eslintrc.js
+eslint.config.js
 .gitignore
 .npmrc
 jsdoc.json

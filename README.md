@@ -2,19 +2,10 @@
 
 [![WestFax](https://westfax.com/img/WestFax_Logo.webp)](https://westfax.com)
 
-A Node.js client library for interacting with the WestFax Secure Cloud Fax API. WestFax is a HIPAA Compliant Secure Cloud Fax company that specializes in high volume, high availability digital cloud fax with a primary focus on Healthcare and medical applications.
+A Node.js client for the WestFax Secure Cloud Fax API.
 
 [![npm version](https://img.shields.io/npm/v/westfax.svg)](https://www.npmjs.com/package/westfax)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
-## Features
-
-- Send faxes to single or multiple recipients (up to 20 per fax)
-- Retrieve fax documents
-- Manage fax filter values
-- Get fax descriptions
-- Check for inbound faxes
-- Get product lists
 
 ## Installation
 
@@ -22,359 +13,153 @@ A Node.js client library for interacting with the WestFax Secure Cloud Fax API. 
 npm install westfax
 ```
 
-## Important Notes
+Node.js 18 or newer is required.
 
-- **All API calls are production** - There is no "test" or "mock" API environment, so every API call you make will use real credentials and will send actual faxes.
-- **You need a WestFax account** - To use this library, you must have a WestFax account with valid credentials.
-- **ProductId is required** - Most API calls require a ProductId, which you can retrieve programmatically (see below).
+## Hosts
 
-## Getting Started
+| Host | Constant | Use |
+| --- | --- | --- |
+| `https://apisecure.westfax.com` | default, `WestFax.LEGACY_BASE_URL` | Production. This is the host the client uses when you omit `baseUrl`. It is still live. |
+| `https://api2.westfax.com` | `WestFax.PRODUCTION_BASE_URL` | Production host published in the current WestFax docs. |
+| `https://integrate.westfax.com` | `WestFax.SANDBOX_BASE_URL` | Developer sandbox. Calls do not send live faxes. |
 
-### Step 1: Get Your WestFax Credentials
-
-Sign up for a WestFax account to receive your username and password.
-
-### Step 2: Retrieve Your ProductId
-
-Most WestFax API calls require a ProductId. Here's how to get it programmatically:
-
-```javascript
-const WestFax = require('westfax');
-
-// Initialize client with just username and password
-const client = new WestFax({
-  username: 'your_username',
-  password: 'your_password'
-});
-
-// Get product list and find your ProductId
-async function getProductId() {
-  try {
-    const productList = await client.getF2EProductList();
-    
-    if (productList.Success && productList.Result.length > 0) {
-      // The first product ID in the list
-      const productId = productList.Result[0].Id;
-      console.log(`Your ProductId is: ${productId}`);
-      return productId;
-    } else {
-      console.error('No products found or API call failed');
-      return null;
-    }
-  } catch (error) {
-    console.error('Error retrieving ProductId:', error.message);
-    return null;
-  }
-}
-
-// Call the function to get your ProductId
-getProductId();
-```
-
-Alternatively, you can use cURL to get your ProductId:
-
-```bash
-curl --location --request POST 'https://apisecure.westfax.com/REST/Profile_GetProductList/json' \
-  --form 'Username="your_username"' \
-  --form 'Password="your_password"' \
-  --form 'Cookies="false"'
-```
-
-The response will contain your ProductId in the `Id` field:
-
-```json
-{
-  "Success": true,
-  "Result": [
-    {
-      "Id": "00000000-1111-2222-3333-4444444444",  // This is your ProductId
-      "Name": "FF-Acme Corp",
-      "ProductType": "FaxForward",
-      ...
-    }
-  ]
-}
-```
-
-### Step 3: Initialize the Client with All Credentials
-
-After obtaining your ProductId, initialize the client with all required credentials:
+Authenticate with `username` and `password`, or with `apiKey` (sent as `x-api-key`). Sandbox accounts can use either. Most calls also need a `productId`, which is the fax line id from `getProductList()` or `getF2EProductList()`.
 
 ```javascript
 const WestFax = require('westfax');
 
 const client = new WestFax({
-  username: 'your_username',
-  password: 'your_password',
-  productId: 'your_product_id',
-  baseUrl: 'https://apisecure.westfax.com', // Optional, defaults to this URL
-  responseEncoding: 'JSON' // Optional, defaults to 'JSON'
+  username: process.env.WESTFAX_USERNAME,
+  password: process.env.WESTFAX_PASSWORD,
+  productId: process.env.WESTFAX_PRODUCT_ID
+});
+
+// Sandbox
+const sandbox = new WestFax({
+  apiKey: process.env.WESTFAX_API_KEY,
+  productId: process.env.WESTFAX_PRODUCT_ID,
+  baseUrl: WestFax.SANDBOX_BASE_URL
 });
 ```
+
+The first product id is available from `client.getProductId()`. It returns `null` when the account has no products. Request failures are thrown.
+
+## Sending a fax
+
+`numbers` is a string for one recipient or an array of up to 20. `file` is a path, `Buffer`, or stream. `files` adds more documents (`Files1`, `Files2`, and so on). `callbackUrl` is posted as `CallBackUrl`.
+
+```javascript
+const result = await client.sendFax({
+  jobName: 'Labs',
+  header: 'Acme Clinic',
+  billingCode: 'Customer Code 1234',
+  numbers: ['800-555-0100', '800-555-0101'],
+  file: '/path/to/document.pdf',
+  faxQuality: 'Fine',
+  feedbackEmail: 'ops@example.com',
+  callbackUrl: 'https://example.com/webhooks/fax'
+});
+
+// result.Result is the JobId when result.Success is true
+```
+
+A finished job has `Status: "Complete"`. That means WestFax finished trying. Delivery for each recipient is `FaxCallInfoList[].Result` (`Sent`, `Busy`, `NoAnswer`, `Failed`, and so on).
+
+```javascript
+const status = await client.getFaxDescriptionsUsingIds({
+  Id: result.Result,
+  Direction: 'Outbound'
+});
+```
+
+## Receiving a fax
+
+```javascript
+const identifiers = await client.getFaxIdentifiers({
+  faxDirection: 'Inbound',
+  startDate: '1/1/2020'
+});
+
+const faxId = {
+  Id: identifiers.Result[0].Id,
+  Direction: 'Inbound'
+};
+
+const documents = await client.getFaxDocuments(faxId, 'pdf');
+const fileContents = documents.Result[0].FaxFiles[0].FileContents;
+const pdf = Buffer.from(fileContents, 'base64');
+
+await client.changeFaxFilterValue(faxId, 'Retrieved');
+```
+
+`changeFaxFilterValue` accepts `None` (unread), `Retrieved` (read), and `Removed`. Up to 10 fax ids can be sent in one call.
+
+## Other calls
+
+```javascript
+await client.getFaxDescriptions({
+  faxDirection: 'Outbound',
+  startDate: '6/1/2026'
+});
+
+await client.searchFaxes({
+  faxDirection: 'Inbound',
+  page: 1,
+  count: 25
+});
+
+await client.getFaxUsage({
+  startDate: '6/1/2026 12:00:00AM',
+  endDate: '7/1/2026 12:00:00AM'
+});
+
+await client.getProductsWithInboundFaxes('None');
+```
+
+`getFaxUsage` covers one fax line and at most 32 days. A longer span comes back as an API error.
+
+Failed HTTP calls throw `WestFaxError`. `error.response` is still set when the server returned a body, and `error.infoString` carries the API message. A JSON body with `Success: false` is returned to you, not thrown, so existing checks of `result.Success` keep working.
 
 ## Examples
 
-The package includes several example scripts to help you get started:
+- `examples/get-product-id.js`
+- `examples/send-fax.js`
+- `examples/get-faxes.js`
 
-- `examples/get-product-id.js` - Demonstrates how to retrieve your ProductId programmatically
-- `examples/send-fax.js` - Shows how to send faxes to single and multiple recipients
-- `examples/retrieve-fax.js` - Demonstrates how to retrieve and process fax documents
-
-To run the examples:
-
-1. Copy `examples/.env.example` to `examples/.env` and add your credentials
-2. Run an example with `node examples/get-product-id.js`
-
-## Usage
-
-### Sending a Fax
-
-```javascript
-// Send a fax to a single recipient
-const sendFaxResult = await client.sendFax({
-  jobName: 'Test Fax',
-  header: 'Test Header',
-  billingCode: 'Customer Code 1234',
-  numbers: '800-555-1212', // Single string for one recipient
-  file: '/path/to/document.pdf',
-  csid: '0000000000',
-  ani: '0000000000',
-  faxQuality: 'Fine',
-  feedbackEmail: 'your@email.com'
-});
-
-// Send to multiple recipients (up to 20 max)
-// The library will automatically format these as Numbers1, Numbers2, Numbers3, etc.
-// as required by the WestFax API
-const multipleNumbersResult = await client.sendFax({
-  jobName: 'Multiple Recipients',
-  header: 'Important Document',
-  numbers: ['800-555-1212', '800-555-1213', '800-555-1214'], // Array of recipients (max 20)
-  file: '/path/to/document.pdf'
-});
-
-// Send with a file buffer
-const fs = require('fs');
-const fileBuffer = fs.readFileSync('/path/to/document.pdf');
-const bufferResult = await client.sendFax({
-  jobName: 'Buffer Example',
-  header: 'From Buffer',
-  numbers: '800-555-1212',
-  file: fileBuffer,
-  filename: 'document.pdf' // Optional filename when using buffer
-});
-```
-
-### Retrieving Fax Documents
-
-```javascript
-// Retrieve a single fax document
-const faxId = {
-  Id: '12345678-1234-1234-1234-123456789abc',
-  Direction: 'Inbound'
-};
-
-const singleDocResult = await client.getFaxDocuments(faxId, 'pdf');
-
-// Retrieve multiple fax documents
-const faxIds = [
-  { Id: '12345678-1234-1234-1234-123456789abc', Direction: 'Inbound' },
-  { Id: '87654321-4321-4321-4321-cba987654321', Direction: 'Outbound' }
-];
-
-const multipleDocsResult = await client.getFaxDocuments(faxIds, 'pdf');
-```
-
-### Changing Fax Filter Values
-
-```javascript
-// Mark a fax as read
-const faxId = {
-  Id: '12345678-1234-1234-1234-123456789abc',
-  Direction: 'Inbound'
-};
-
-const markAsReadResult = await client.changeFaxFilterValue(faxId, 'Retrieved');
-
-// Delete a fax
-const deleteResult = await client.changeFaxFilterValue(faxId, 'Removed');
-
-// Reset filter (mark as unread)
-const resetResult = await client.changeFaxFilterValue(faxId, 'None');
-```
-
-### Getting Fax Descriptions
-
-```javascript
-const faxId = {
-  Id: '12345678-1234-1234-1234-123456789abc',
-  Direction: 'Inbound'
-};
-
-const faxDescription = await client.getFaxDescriptionsUsingIds(faxId);
-```
-
-### Getting Products with Inbound Faxes
-
-```javascript
-// Get products with unread faxes
-const unreadFaxProducts = await client.getProductsWithInboundFaxes('None');
-
-// Get products with read faxes
-const readFaxProducts = await client.getProductsWithInboundFaxes('Retrieved');
-```
-
-### Getting Fax-to-Email Product List
-
-```javascript
-const productList = await client.getF2EProductList();
-```
+Copy `examples/.env.example` to `examples/.env`, then run `node examples/get-product-id.js`. `send-fax.js` will not run until `FAX_NUMBER` is set, because a call against production sends a real fax.
 
 ## Testing
 
-The package includes comprehensive tests for all API methods. 
+`npm test` does not call WestFax. It checks request construction against a mocked HTTP client.
 
-**Important Note**: There is no "mock" API for WestFax - all API calls go to the production environment. When running tests, real credentials are required, and actual API calls will be made.
+`npm run test:real` calls `getProductList` on the live host using the credentials in the environment. It does not send a fax. Put credentials in a root `.env` file (see `.env.example`) or export them in the shell.
 
-### Running Tests with Your WestFax Credentials
+## API reference
 
-To run tests with your WestFax credentials:
+### `new WestFax(config)`
 
-1. Create a `.env` file in the project root (or copy from `.env.example`)
-2. Add your WestFax credentials:
-
-```
-WESTFAX_USERNAME=your_username
-WESTFAX_PASSWORD=your_password
-WESTFAX_PRODUCT_ID=your_product_id
-```
-
-3. Run the tests:
-
-```bash
-npm test
-```
-
-For integration tests that send real faxes, you can also set:
-
-```
-TEST_FAX_NUMBER=your_test_fax_number
-TEST_FAX_FILE=path_to_test_file.pdf
-```
-
-### Test Safety
-
-Since all API calls are to the production environment, be careful when running tests:
-
-- All fax tests will send real faxes
-- All tests will use your actual account
-- Consider the cost implications of running tests that send faxes
-
-If you prefer to avoid actually sending faxes during testing, you can modify the test cases to skip the actual sendFax tests.
-
-## Getting Help
-
-If you need assistance or have questions about the WestFax API, please contact WestFax support directly.
-
-## API Reference
-
-### Constructor
-
-#### `new WestFax(config)`
-
-Creates a new WestFax client instance.
-
-- `config` (Object): Configuration options
-  - `username` (String): WestFax API username
-  - `password` (String): WestFax API password
-  - `productId` (String): Default product ID to use for operations
-  - `baseUrl` (String, optional): API base URL (default: 'https://apisecure.westfax.com')
-  - `responseEncoding` (String, optional): Response format (default: 'JSON')
-  - `cookies` (Boolean, optional): Whether to use cookies (default: false)
+- `username`, `password` — account credentials
+- `apiKey` — optional `x-api-key`
+- `productId` — default fax line id
+- `baseUrl` — API host, without a trailing path
+- `responseEncoding` — `JSON` (default) or `XML`
+- `cookies` — default `false`
+- `timeout` — milliseconds, default `120000`
 
 ### Methods
 
-#### `getProductId()`
-
-Helper method to retrieve the first available ProductId for your account. This is useful when setting up the client for the first time.
-
-Returns: Promise resolving to the ProductId string or null if none found
-
-#### `getProductList()`
-
-Gets a list of all products the user has access to.
-
-Returns: Promise resolving to API response object with a Result array containing product information
-
-#### `getF2EProductList()`
-
-Gets a list of fax-to-email products the user has access to.
-
-Returns: Promise resolving to API response object with a Result array containing product information
-
-#### `sendFax(options)`
-
-Sends a fax to one or more recipients.
-
-- `options` (Object): Fax options
-  - `jobName` (String, optional): Name of the fax job
-  - `header` (String, optional): Header to display on the fax
-  - `billingCode` (String, optional): Billing code
-  - `numbers` (String|Array): Destination fax number(s)
-    - Pass a single string for one recipient
-    - Pass an array of strings for multiple recipients (will be formatted as Numbers1, Numbers2, etc.)
-  - `file` (String|Buffer|Stream): File to fax (path, buffer, or stream)
-  - `filename` (String, optional): Filename when using buffer or stream
-  - `csid` (String, optional): CSID (Caller Service ID)
-  - `ani` (String, optional): ANI (Automatic Number Identification)
-  - `startDate` (String, optional): Start date for the fax
-  - `faxQuality` (String, optional): Fax quality ('Fine' or 'Normal')
-  - `feedbackEmail` (String, optional): Email for status notifications
-  - `callbackUrl` (String, optional): Callback URL for status updates
-
-Returns: Promise resolving to API response object
-
-#### `getFaxDocuments(faxIds, format)`
-
-Retrieves fax documents.
-
-- `faxIds` (Object|Array): Fax identifier(s)
-- `format` (String, optional): Document format (default: 'pdf')
-  - Valid formats: 'pdf', 'tiff'
-
-Returns: Promise resolving to API response object
-
-#### `changeFaxFilterValue(faxIds, filter)`
-
-Changes the filter value of faxes.
-
-- `faxIds` (Object|Array): Fax identifier(s)
-- `filter` (String): Filter value
-  - 'None': Reset (mark as unread)
-  - 'Retrieved': Mark as read
-  - 'Removed': Delete
-
-Returns: Promise resolving to API response object
-
-#### `getFaxDescriptionsUsingIds(faxIds)`
-
-Gets detailed descriptions of faxes.
-
-- `faxIds` (Object|Array): Fax identifier(s)
-
-Returns: Promise resolving to API response object
-
-#### `getProductsWithInboundFaxes(filter)`
-
-Gets products with inbound faxes matching a filter.
-
-- `filter` (String, optional): Filter to apply (default: 'None')
-  - 'None': Unread faxes
-  - 'Retrieved': Read faxes
-  - 'Removed': Deleted faxes
-
-Returns: Promise resolving to API response object
+- `getProductId()` → `Promise<string|null>`
+- `getProductList()` / `getF2EProductList()`
+- `sendFax(options)`
+- `getFaxDocuments(faxIds, format = 'pdf')` — `pdf`, `tiff`, `jpeg`, `png`, or `gif`
+- `getFaxDescriptionsUsingIds(faxIds)`
+- `changeFaxFilterValue(faxIds, filter)`
+- `getProductsWithInboundFaxes(filter = 'None')`
+- `getFaxIdentifiers({ faxDirection, startDate, productId })`
+- `getFaxDescriptions({ faxDirection, startDate, productId })`
+- `getFaxUsage({ startDate, endDate, productId })`
+- `searchFaxes({ faxDirection, page, count, startDate, endDate, filter, productId })`
 
 ## License
 
-MIT 
+MIT

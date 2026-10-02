@@ -1,208 +1,286 @@
+const FormData = require('form-data');
+
+const mockHttp = {
+  post: jest.fn()
+};
+
+jest.mock('axios', () => ({
+  create: jest.fn(() => mockHttp)
+}));
+
 const WestFax = require('../index');
-const axios = require('axios');
-const dotenv = require('dotenv');
+const { WestFaxError } = WestFax;
 
-// Load environment variables from .env file
-dotenv.config();
+const PRODUCT_ID = '11111111-2222-3333-4444-555555555555';
 
-describe('WestFax Client', () => {
-  let client;
-  
+function fields() {
+  return FormData.prototype.append.mock.calls.map(([name, value]) => [name, value]);
+}
+
+function fieldMap() {
+  return new Map(fields());
+}
+
+describe('WestFax client', () => {
   beforeEach(() => {
-    // Check if credentials are set in environment variables
-    const username = process.env.WESTFAX_USERNAME;
-    const password = process.env.WESTFAX_PASSWORD;
-    const productId = process.env.WESTFAX_PRODUCT_ID;
-    
-    if (!username || !password || !productId) {
-      console.warn('\n⚠️  WARNING: Missing WestFax API credentials in environment variables.');
-      console.warn('These tests will run against the PRODUCTION WestFax API and require valid credentials.');
-      console.warn('To run tests with your credentials, create a .env file in the project root with:');
-      console.warn('WESTFAX_USERNAME=your_username');
-      console.warn('WESTFAX_PASSWORD=your_password');
-      console.warn('WESTFAX_PRODUCT_ID=your_product_id');
-      console.warn('WESTFAX_API_URL=https://apisecure.westfax.com\n');
-      console.warn('⚠️  NOTE: There is no mock or test API. All tests will make REAL API calls and may incur charges.\n');
-    }
-    
-    // Create a new client instance with configs from environment variables
-    // or fallback to placeholder values if not provided
-    client = new WestFax({
-      username: username || 'placeholder_username',
-      password: password || 'placeholder_password',
-      productId: productId || '00000000-0000-0000-0000-000000000000',
-      baseUrl: process.env.WESTFAX_API_URL || 'https://apisecure.westfax.com',
-      responseEncoding: 'JSON'
-    });
+    mockHttp.post.mockReset();
+    mockHttp.post.mockResolvedValue({ data: { Success: true, Result: 'job-id' } });
+    jest.spyOn(FormData.prototype, 'append');
   });
-  
-  test('should initialize with default settings', () => {
-    const defaultClient = new WestFax();
-    expect(defaultClient.baseUrl).toBe('https://apisecure.westfax.com');
-    expect(defaultClient.responseEncoding).toBe('JSON');
-    expect(defaultClient.cookies).toBe(false);
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
-  
-  test('should initialize with custom settings', () => {
-    const username = process.env.WESTFAX_USERNAME || 'placeholder_username';
-    const password = process.env.WESTFAX_PASSWORD || 'placeholder_password';
-    const productId = process.env.WESTFAX_PRODUCT_ID || '00000000-0000-0000-0000-000000000000';
-    
-    expect(client.username).toBe(username);
-    expect(client.password).toBe(password);
-    expect(client.productId).toBe(productId);
+
+  test('uses the legacy production host by default', () => {
+    const client = new WestFax();
+    expect(client.baseUrl).toBe('https://apisecure.westfax.com');
+    expect(client.baseUrl).toBe(WestFax.LEGACY_BASE_URL);
+    expect(client.responseEncoding).toBe('JSON');
+    expect(client.cookies).toBe(false);
+    expect(client.timeout).toBe(120000);
+    expect(WestFax.PRODUCTION_BASE_URL).toBe('https://api2.westfax.com');
+    expect(WestFax.SANDBOX_BASE_URL).toBe('https://integrate.westfax.com');
   });
-  
-  // Skip API tests if credentials not provided
-  const conditionalApiTest = (process.env.WESTFAX_USERNAME && process.env.WESTFAX_PASSWORD && process.env.WESTFAX_PRODUCT_ID) 
-    ? test 
-    : test.skip;
-  
-  describe('sendFax', () => {
-    // Use conditionalApiTest to skip if credentials aren't provided
-    conditionalApiTest('should send a fax with basic options', async () => {
-      // This test will make a real API call
-      const options = {
-        jobName: 'Test Fax',
-        header: 'Test Header',
-        numbers: process.env.TEST_FAX_NUMBER || '800-555-1212',
-        file: process.env.TEST_FAX_FILE || './tests/test.pdf'
-      };
-      
-      // Only try to execute if we have proper credentials and test file
-      if (!process.env.TEST_FAX_FILE) {
-        console.warn('\n⚠️ Skipping actual fax send because TEST_FAX_FILE is not set\n');
-        return;
-      }
-      
-      try {
-        const result = await client.sendFax(options);
-        expect(result).toBeDefined();
-      } catch (error) {
-        // Log error details for debugging
-        console.error('API Error:', error.message);
-        throw error;
-      }
-    }, 30000); // Increased timeout for API call
-    
-    // This test only verifies method construction without making API calls
-    test('should properly format API request for multiple numbers', () => {
-      const formData = new FormData();
-      jest.spyOn(formData, 'append');
-      
-      const options = {
-        numbers: ['800-555-1212', '800-555-1213', '800-555-1214'],
-      };
-      
-      // Verify append is called correctly for each number
-      if (Array.isArray(options.numbers)) {
-        options.numbers.forEach((number, index) => {
-          expect(`Numbers${index + 1}`).toMatch(/^Numbers[1-3]$/);
-        });
-      }
+
+  test('accepts an API key, sandbox host, and custom timeout', () => {
+    const client = new WestFax({
+      apiKey: 'sandbox-key',
+      productId: PRODUCT_ID,
+      baseUrl: `${WestFax.SANDBOX_BASE_URL}/`,
+      timeout: 5000
     });
 
-    // Add test for maximum fax number limit
-    test('should throw error if more than 20 fax numbers are provided', async () => {
-      // Create array with 21 numbers
-      const tooManyNumbers = Array(21).fill('800-555-0000').map((num, i) => num.replace(/0000$/, `${1000 + i}`));
-      
-      const options = {
-        jobName: 'Too Many Numbers Test',
-        numbers: tooManyNumbers,
-        file: './tests/test.pdf'
-      };
-      
-      await expect(client.sendFax(options)).rejects.toThrow('Maximum of 20 fax numbers allowed');
+    expect(client.apiKey).toBe('sandbox-key');
+    expect(client.baseUrl).toBe(WestFax.SANDBOX_BASE_URL);
+    expect(client.timeout).toBe(5000);
+  });
+
+  test('rejects an unknown response encoding', () => {
+    expect(() => new WestFax({ responseEncoding: '../admin' })).toThrow(WestFaxError);
+  });
+
+  describe('sendFax', () => {
+    const client = () => new WestFax({
+      username: 'user',
+      password: 'secret',
+      productId: PRODUCT_ID,
+      apiKey: 'live-key'
+    });
+
+    test('posts recipients, the document, and CallBackUrl', async () => {
+      const result = await client().sendFax({
+        jobName: 'Labs',
+        header: 'Acme',
+        billingCode: 'C-1',
+        numbers: [' 800-555-1212 ', '800-555-1213'],
+        file: Buffer.from('pdf'),
+        filename: 'labs.pdf',
+        csid: '111',
+        ani: '222',
+        startDate: '1/1/1999',
+        faxQuality: 'fine',
+        feedbackEmail: 'ops@example.com',
+        callbackUrl: 'https://example.com/fax'
+      });
+
+      expect(result).toEqual({ Success: true, Result: 'job-id' });
+      expect(fieldMap()).toEqual(new Map([
+        ['Username', 'user'],
+        ['Password', 'secret'],
+        ['Cookies', 'false'],
+        ['ProductId', PRODUCT_ID],
+        ['JobName', 'Labs'],
+        ['Header', 'Acme'],
+        ['BillingCode', 'C-1'],
+        ['Numbers1', '800-555-1212'],
+        ['Numbers2', '800-555-1213'],
+        ['Files0', expect.any(Buffer)],
+        ['CSID', '111'],
+        ['ANI', '222'],
+        ['StartDate', '1/1/1999'],
+        ['FaxQuality', 'Fine'],
+        ['FeedbackEmail', 'ops@example.com'],
+        ['CallBackUrl', 'https://example.com/fax']
+      ]));
+
+      const [url, , config] = mockHttp.post.mock.calls[0];
+      expect(url).toBe(`https://apisecure.westfax.com/rest/Fax_SendFax/JSON`);
+      expect(config.headers['x-api-key']).toBe('live-key');
+      expect(config.headers['content-type']).toEqual(expect.stringContaining('multipart/form-data'));
+      expect(config.headers.ContentType).toBeUndefined();
+      expect(config.timeout).toBe(120000);
+    });
+
+    test('sends a single number as Numbers1 and extra files as Files1', async () => {
+      await client().sendFax({
+        numbers: '800-555-1212',
+        file: Buffer.from('one'),
+        files: [{ data: Buffer.from('two'), filename: 'second.pdf' }]
+      });
+
+      expect(fieldMap().get('Numbers1')).toBe('800-555-1212');
+      expect(fieldMap().has('Numbers2')).toBe(false);
+      expect(FormData.prototype.append).toHaveBeenCalledWith('Files0', expect.any(Buffer), {
+        filename: 'document.pdf'
+      });
+      expect(FormData.prototype.append).toHaveBeenCalledWith('Files1', expect.any(Buffer), {
+        filename: 'second.pdf'
+      });
+    });
+
+    test('rejects more than 20 numbers before calling the API', async () => {
+      const numbers = Array.from({ length: 21 }, (_, index) => `800555${String(index).padStart(4, '0')}`);
+      await expect(client().sendFax({
+        numbers,
+        file: Buffer.from('pdf')
+      })).rejects.toThrow('Maximum of 20 fax numbers allowed');
+      expect(mockHttp.post).not.toHaveBeenCalled();
+    });
+
+    test('rejects a missing file, number, quality, or product id', async () => {
+      await expect(client().sendFax({ numbers: '800-555-1212' })).rejects.toThrow('At least one file is required');
+      await expect(client().sendFax({ file: Buffer.from('pdf') })).rejects.toThrow('At least one fax number is required');
+      await expect(client().sendFax({
+        numbers: '800-555-1212',
+        file: Buffer.from('pdf'),
+        faxQuality: 'Draft'
+      })).rejects.toThrow('faxQuality must be Fine or Normal');
+
+      const unsigned = new WestFax({ username: 'user', password: 'secret' });
+      await expect(unsigned.sendFax({
+        numbers: '800-555-1212',
+        file: Buffer.from('pdf')
+      })).rejects.toThrow('productId is required');
+      expect(mockHttp.post).not.toHaveBeenCalled();
     });
   });
-  
-  describe('getFaxDocuments', () => {
-    // This test validates the method without making API calls
-    test('should properly format request for retrieving fax documents', () => {
-      const faxId = {
-        Id: '12345678-1234-1234-1234-123456789abc',
-        Direction: 'Inbound'
-      };
-      
-      // Validate the faxId structure
-      expect(faxId).toHaveProperty('Id');
-      expect(faxId).toHaveProperty('Direction');
+
+  describe('fax id calls', () => {
+    const client = () => new WestFax({
+      username: 'user',
+      password: 'secret',
+      productId: PRODUCT_ID
     });
-    
-    test('should properly format request for multiple fax IDs', () => {
-      const faxIds = [
-        { Id: '12345678-1234-1234-1234-123456789abc', Direction: 'Inbound' },
-        { Id: '87654321-4321-4321-4321-cba987654321', Direction: 'Outbound' }
-      ];
-      
-      // Verify each faxId has the expected structure
-      faxIds.forEach(faxId => {
-        expect(faxId).toHaveProperty('Id');
-        expect(faxId).toHaveProperty('Direction');
+    const faxIds = [
+      { Id: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', Direction: 'Inbound' },
+      { Id: 'ffffffff-1111-2222-3333-444444444444', Direction: 'Outbound' }
+    ];
+
+    test('requests documents with FaxIds1 and a normalized format', async () => {
+      await client().getFaxDocuments(faxIds[0], 'PDF');
+      expect(fieldMap().get('Format')).toBe('pdf');
+      expect(fieldMap().get('FaxIds1')).toBe(JSON.stringify(faxIds[0]));
+    });
+
+    test('numbers each fax id instead of posting one FaxIds blob', async () => {
+      await client().getFaxDescriptionsUsingIds(faxIds);
+      expect(fieldMap().get('FaxIds1')).toBe(JSON.stringify(faxIds[0]));
+      expect(fieldMap().get('FaxIds2')).toBe(JSON.stringify(faxIds[1]));
+      expect(fieldMap().has('FaxIds')).toBe(false);
+    });
+
+    test('rejects more than 10 fax ids and unknown filters', async () => {
+      const tooMany = Array.from({ length: 11 }, () => faxIds[0]);
+      await expect(client().changeFaxFilterValue(tooMany, 'Retrieved')).rejects.toThrow(
+        'Maximum of 10 fax ids allowed'
+      );
+      await expect(client().changeFaxFilterValue(faxIds[0], 'Read')).rejects.toThrow(
+        'filter must be None, Retrieved, or Removed'
+      );
+      expect(mockHttp.post).not.toHaveBeenCalled();
+    });
+
+    test('asks for products with inbound faxes without a product id', async () => {
+      await client().getProductsWithInboundFaxes('retrieved');
+      expect(fieldMap().get('Filter')).toBe('Retrieved');
+      expect(fieldMap().has('ProductId')).toBe(false);
+      expect(mockHttp.post.mock.calls[0][0]).toContain('/rest/Fax_GetProductsWithInboundFaxes/JSON');
+    });
+  });
+
+  describe('account and history calls', () => {
+    test('returns the first product id and falls back to the fax-to-email list', async () => {
+      const client = new WestFax({ apiKey: 'key' });
+      mockHttp.post
+        .mockResolvedValueOnce({ data: { Success: true, Result: [] } })
+        .mockResolvedValueOnce({
+          data: { Success: true, Result: [{ Id: PRODUCT_ID, Name: 'Line' }] }
+        });
+
+      await expect(client.getProductId()).resolves.toBe(PRODUCT_ID);
+      expect(mockHttp.post.mock.calls.map(([url]) => url)).toEqual([
+        'https://apisecure.westfax.com/rest/Profile_GetProductList/JSON',
+        'https://apisecure.westfax.com/rest/Profile_GetF2EProductList/JSON'
+      ]);
+      expect(fieldMap().has('Username')).toBe(false);
+      expect(mockHttp.post.mock.calls[0][2].headers['x-api-key']).toBe('key');
+    });
+
+    test('returns null when neither product list has an id', async () => {
+      const client = new WestFax({ username: 'user', password: 'secret' });
+      mockHttp.post.mockResolvedValue({ data: { Success: false, ErrorString: 'Authorization_Failed_BadUsernamePassword' } });
+      await expect(client.getProductId()).resolves.toBeNull();
+    });
+
+    test('requires credentials before making a request', async () => {
+      const client = new WestFax();
+      await expect(client.getProductList()).rejects.toThrow('Set username and password, or an API key');
+      expect(mockHttp.post).not.toHaveBeenCalled();
+    });
+
+    test('loads identifiers, descriptions, usage, and a paged search', async () => {
+      const client = new WestFax({
+        username: 'user',
+        password: 'secret',
+        productId: PRODUCT_ID
+      });
+
+      await client.getFaxIdentifiers({ faxDirection: 'outbound', startDate: '1/1/2020' });
+      expect(mockHttp.post.mock.calls[0][0]).toContain('/rest/Fax_GetFaxIdentifiers/JSON');
+      expect(fieldMap().get('FaxDirection')).toBe('Outbound');
+      expect(fieldMap().get('StartDate')).toBe('1/1/2020');
+
+      jest.restoreAllMocks();
+      jest.spyOn(FormData.prototype, 'append');
+      await client.getFaxDescriptions({ faxDirection: 'Inbound', startDate: '6/1/2026' });
+      expect(mockHttp.post.mock.calls[1][0]).toContain('/rest/Fax_GetFaxDescriptions/JSON');
+
+      jest.restoreAllMocks();
+      jest.spyOn(FormData.prototype, 'append');
+      await client.getFaxUsage({ startDate: '6/1/2026', endDate: '7/1/2026' });
+      expect(fieldMap().get('EndDate')).toBe('7/1/2026');
+      expect(mockHttp.post.mock.calls[2][0]).toContain('/rest/Profile_GetFaxUsageByProductId/JSON');
+
+      jest.restoreAllMocks();
+      jest.spyOn(FormData.prototype, 'append');
+      await client.searchFaxes({ page: 2, count: 10, filter: 'None' });
+      expect(fieldMap().get('MethodParams1')).toBe(JSON.stringify({ Name: 'page', Value: '2' }));
+      expect(fieldMap().get('MethodParams2')).toBe(JSON.stringify({ Name: 'count', Value: '10' }));
+      expect(fieldMap().get('FaxDirection')).toBe('Inbound');
+      expect(mockHttp.post.mock.calls[3][0]).toContain('/rest/Fax_GetF2EFaxDescriptions_PagedSearch/JSON');
+    });
+
+    test('wraps transport failures and keeps the response body', async () => {
+      const client = new WestFax({ username: 'user', password: 'secret', productId: PRODUCT_ID });
+      const failure = new Error('timeout of 120000ms exceeded');
+      failure.code = 'ECONNABORTED';
+      failure.response = {
+        status: 500,
+        data: { ErrorString: 'Api_Failed_', InfoString: 'Timespan is more than 32 days' }
+      };
+      mockHttp.post.mockRejectedValue(failure);
+
+      await expect(client.getFaxUsage({
+        startDate: '1/1/2020',
+        endDate: '3/1/2020'
+      })).rejects.toMatchObject({
+        name: 'WestFaxError',
+        message: 'Timespan is more than 32 days',
+        errorString: 'Api_Failed_',
+        status: 500,
+        response: failure.response
       });
     });
   });
-  
-  describe('changeFaxFilterValue', () => {
-    test('should accept valid filter values', () => {
-      // Valid filter values
-      const validFilters = ['None', 'Retrieved', 'Removed'];
-      
-      validFilters.forEach(filter => {
-        expect(['None', 'Retrieved', 'Removed']).toContain(filter);
-      });
-    });
-  });
-  
-  describe('getProductList', () => {
-    conditionalApiTest('should get complete product list from real API', async () => {
-      try {
-        const result = await client.getProductList();
-        
-        // For real API, validate response structure
-        expect(result).toHaveProperty('Success');
-        if (result.Success && result.Result && result.Result.length > 0) {
-          const product = result.Result[0];
-          expect(product).toHaveProperty('Id');
-          expect(product).toHaveProperty('Name');
-          expect(product).toHaveProperty('ProductType');
-        }
-      } catch (error) {
-        console.error('API Error:', error.message);
-        throw error;
-      }
-    }, 30000);
-  });
-  
-  describe('getProductId', () => {
-    conditionalApiTest('should get the ProductId from real API', async () => {
-      try {
-        const productId = await client.getProductId();
-        
-        // If we got a product ID, validate its format
-        if (productId) {
-          // Basic UUID format validation
-          expect(productId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
-        }
-      } catch (error) {
-        console.error('API Error:', error.message);
-        throw error;
-      }
-    }, 30000);
-  });
-  
-  describe('getF2EProductList', () => {
-    conditionalApiTest('should get fax-to-email product list from real API', async () => {
-      try {
-        const result = await client.getF2EProductList();
-        
-        // For real API, validate response structure
-        expect(result).toHaveProperty('Success');
-      } catch (error) {
-        console.error('API Error:', error.message);
-        throw error;
-      }
-    }, 30000);
-  });
-}); 
+});

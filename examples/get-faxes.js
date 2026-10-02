@@ -1,105 +1,68 @@
-// Example: Retrieve faxes
-const WestFax = require('../index');
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config(); // Load environment variables from .env file
+const WestFax = require('../index');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
-// Initialize the WestFax client with your credentials
-const client = new WestFax({
-  username: process.env.WESTFAX_USERNAME,
-  password: process.env.WESTFAX_PASSWORD,
-  productId: process.env.WESTFAX_PRODUCT_ID,
-  // Optional settings
-  baseUrl: process.env.WESTFAX_API_URL || 'https://apisecure.westfax.com',
-  responseEncoding: 'JSON'
-});
+const username = process.env.WESTFAX_USERNAME;
+const apiKey = process.env.WESTFAX_API_KEY;
 
-// Function to check for inbound faxes
-async function checkInboundFaxes() {
-  try {
-    console.log('Checking for inbound faxes...');
-    
-    // Get products with unread faxes
-    const productsWithFaxes = await client.getProductsWithInboundFaxes('None');
-    console.log('Products with unread faxes:', JSON.stringify(productsWithFaxes, null, 2));
-    
-    // If no products with faxes, exit
-    if (!productsWithFaxes || !productsWithFaxes.length) {
-      console.log('No unread faxes found.');
-      return;
-    }
-    
-    // Get fax descriptions for a product
-    // For this example, we'll use the first product with unread faxes
-    const productId = productsWithFaxes[0].ProductId;
-    
-    // Update the client's product ID to match
-    client.productId = productId;
-    
-    // Get fax descriptions
-    console.log(`Getting fax descriptions for product ${productId}...`);
-    const faxDescriptions = await client.getFaxDescriptionsUsingIds({
-      Id: productsWithFaxes[0].Id,
-      Direction: 'Inbound'
-    });
-    console.log('Fax descriptions:', JSON.stringify(faxDescriptions, null, 2));
-    
-    // If no fax descriptions, exit
-    if (!faxDescriptions || !faxDescriptions.length) {
-      console.log('No fax descriptions found.');
-      return;
-    }
-    
-    // Get the fax document for the first fax
-    const faxId = {
-      Id: faxDescriptions[0].Id,
-      Direction: 'Inbound'
-    };
-    
-    console.log(`Retrieving fax document for ID ${faxId.Id}...`);
-    const faxDocument = await client.getFaxDocuments(faxId, 'pdf');
-    
-    // Save the fax document
-    if (faxDocument && faxDocument.FileData) {
-      const outputDir = path.join(__dirname, 'downloads');
-      
-      // Create download directory if it doesn't exist
-      if (!fs.existsSync(outputDir)) {
-        fs.mkdirSync(outputDir, { recursive: true });
-      }
-      
-      const outputPath = path.join(outputDir, `fax-${faxId.Id}.pdf`);
-      
-      // The API returns base64-encoded file data
-      const fileBuffer = Buffer.from(faxDocument.FileData, 'base64');
-      fs.writeFileSync(outputPath, fileBuffer);
-      
-      console.log(`Fax document saved to ${outputPath}`);
-      
-      // Mark the fax as read
-      console.log('Marking fax as read...');
-      await client.changeFaxFilterValue(faxId, 'Retrieved');
-      console.log('Fax marked as read successfully.');
-    } else {
-      console.log('No file data received for the fax.');
-    }
-    
-    return faxDescriptions;
-  } catch (error) {
-    console.error('Error retrieving faxes:');
-    if (error.response) {
-      console.error('Response error:', error.response.data);
-    } else if (error.request) {
-      console.error('Request error:', error.request);
-    } else {
-      console.error('Error:', error.message);
-    }
-    throw error;
-  }
+if ((!username && !apiKey) || !process.env.WESTFAX_PRODUCT_ID) {
+  console.error('Copy examples/.env.example to examples/.env and set credentials plus WESTFAX_PRODUCT_ID.');
+  process.exit(1);
 }
 
-// Execute the example
-checkInboundFaxes()
-  .then(() => console.log('Example completed successfully'))
-  .catch(() => console.log('Example failed'))
-  .finally(() => console.log('Done')); 
+const client = new WestFax({
+  username,
+  password: process.env.WESTFAX_PASSWORD,
+  apiKey,
+  productId: process.env.WESTFAX_PRODUCT_ID,
+  baseUrl: process.env.WESTFAX_API_URL || undefined
+});
+
+async function checkInboundFaxes() {
+  const identifiers = await client.getFaxIdentifiers({
+    faxDirection: 'Inbound',
+    startDate: process.env.FAX_START_DATE || '1/1/2020'
+  });
+
+  if (!identifiers.Success) {
+    console.log(JSON.stringify(identifiers, null, 2));
+    return;
+  }
+
+  const fax = (identifiers.Result || [])[0];
+  if (!fax) {
+    console.log('No inbound faxes found.');
+    return;
+  }
+
+  const faxId = { Id: fax.Id, Direction: 'Inbound' };
+  const description = await client.getFaxDescriptionsUsingIds(faxId);
+  console.log(JSON.stringify(description, null, 2));
+
+  const documents = await client.getFaxDocuments(faxId, 'pdf');
+  const fileContents = documents.Result
+    && documents.Result[0]
+    && documents.Result[0].FaxFiles
+    && documents.Result[0].FaxFiles[0]
+    && documents.Result[0].FaxFiles[0].FileContents;
+
+  if (!fileContents) {
+    console.log('No file contents were returned for this fax.');
+    return;
+  }
+
+  const outputDir = path.join(__dirname, 'downloads');
+  fs.mkdirSync(outputDir, { recursive: true });
+  const outputPath = path.join(outputDir, `fax-${fax.Id}.pdf`);
+  fs.writeFileSync(outputPath, Buffer.from(fileContents, 'base64'));
+  console.log(`Saved ${outputPath}`);
+
+  const marked = await client.changeFaxFilterValue(faxId, 'Retrieved');
+  console.log(JSON.stringify(marked, null, 2));
+}
+
+checkInboundFaxes().catch((error) => {
+  console.error(error.response ? error.response.data : error.message);
+  process.exitCode = 1;
+});

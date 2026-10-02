@@ -1,14 +1,13 @@
 // Example: Get your ProductId programmatically
+const path = require('path');
 const WestFax = require('../index');
-require('dotenv').config(); // Load environment variables from .env file
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
-// Initialize the WestFax client with only username and password
 const client = new WestFax({
   username: process.env.WESTFAX_USERNAME,
   password: process.env.WESTFAX_PASSWORD,
-  // No productId needed for this initial call
-  baseUrl: process.env.WESTFAX_API_URL || 'https://apisecure.westfax.com',
-  responseEncoding: 'JSON'
+  apiKey: process.env.WESTFAX_API_KEY,
+  baseUrl: process.env.WESTFAX_API_URL || undefined
 });
 
 /**
